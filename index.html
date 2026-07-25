@@ -292,6 +292,7 @@ select{
     <div class="grp">
       <div class="toggle"><span>問題文を画面に表示する</span><div class="sw on" id="swShowQ"></div></div>
       <div class="toggle"><span>解説も読み上げる</span><div class="sw on" id="swReadNote"></div></div>
+      <div class="toggle"><span>専門用語の読み方を補正する</span><div class="sw on" id="swFixRead"></div></div>
       <div class="toggle"><span>順番をシャッフルする</span><div class="sw on" id="swShuffle"></div></div>
       <div class="toggle"><span>「あとで復習」だけ出題する</span><div class="sw" id="swWeakOnly"></div></div>
       <div class="toggle"><span>画面を消さない</span><div class="sw on" id="swWake"></div></div>
@@ -737,11 +738,11 @@ const CHNAME = {9:"経営管理論",10:"経営戦略論",11:"経営組織論",12
 
 const S = {
   chapters: new Set(CH),
-  think: 8, rate: 1.05, gap: 2, voiceURI: "", theme: "light",
-  showQ: true, readNote: true, shuffle: true, weakOnly: false, wake: true
+  think: 8, rate: 1.05, gap: 2, pitch: 1, voiceURI: "", voiceURI2: "", theme: "light",
+  showQ: true, readNote: true, shuffle: true, weakOnly: false, wake: true, fixRead: true
 };
 let queue = [], idx = 0, running = false, token = 0, weak = {}, seen = {};
-let wakeLock = null, voice = null, swState = "未対応";
+let wakeLock = null, voiceQ = null, voiceA = null, swState = "未対応";
 
 /* Service Worker（sw.js を同じ場所に置くとオフラインで使える） */
 if("serviceWorker" in navigator && location.protocol === "https:"){
@@ -888,7 +889,8 @@ function refreshDiag(){
     ["読み上げ機能", ("speechSynthesis" in window) ? "使える" : "使えない"],
     ["音声の解錠", unlocked ? "済み" : "まだ（画面を一度タップ）"],
     ["検出した音声", vs + "件（うち日本語 " + ja + "件）"],
-    ["選択中の声", voice ? voice.name : "未選択"],
+    ["問題の声", voiceQ ? voiceQ.name : "未選択"],
+    ["解答の声", voiceA ? voiceA.name : "未選択"],
     ["ブラウザ保存", Store.okLS ? "使える" : "使えない"],
     ["データベース", Store.okIDB ? "使える" : "使えない"],
     ["クッキー", Store.okCK ? "使える" : "使えない"],
@@ -912,6 +914,336 @@ async function importData(txt){
 
 const keyOf = b => b.c + "|" + b.q.slice(0,18);
 
+/* ============ 読み方の補正 ============ */
+/* 合成音声が読み間違えやすい語を、読み上げ用の文だけカナに置き換える。
+   画面表示は漢字のまま。長い語から順に当てるため配列は長さ順に並べてある。 */
+const READ = [
+["I-Rフレームワーク","アイアールフレームワーク"],
+["拒否権条項付株式","キョヒケンジョウコウツキカブシキ"],
+["ISO26000","アイエスオーニマンロクセン"],
+["大文字P小文字m","オオモジピー、コモジエム"],
+["小文字p大文字M","コモジピー、オオモジエム"],
+["分割型新設分割","ブンカツガタシンセツブンカツ"],
+["訓練された無能","クンレンサレタムノウ"],
+["上澄み吸収価格","ウワズミキュウシュウカカク"],
+["職務遂行能力","ショクムスイコウノウリョク"],
+["見えざる出資","ミエザルシュッシ"],
+["内部資本市場","ナイブシホンシジョウ"],
+["経験曲線効果","ケイケンキョクセンコウカ"],
+["株式公開買付","カブシキコウカイカイツケ"],
+["相互持ち合い","ソウゴモチアイ"],
+["物言わぬ株主","モノイワヌカブヌシ"],
+["内閣総理大臣","ナイカクソウリダイジン"],
+["温室効果ガス","オンシツコウカガス"],
+["私的致富手段","シテキチフシュダン"],
+["熟練労働市場","ジュクレンロウドウシジョウ"],
+["内的参照価格","ナイテキサンショウカカク"],
+["延べ接触回数","ノベセッショクカイスウ"],
+["精緻化見込み","セイチカミコミ"],
+["認知的不協和","ニンチテキフキョウワ"],
+["DAGMAR","ダグマー"],
+["EDINET","エディネット"],
+["Off-JT","オフジェーティー"],
+["A-Uモデル","エーユーモデル"],
+["Action","アクション"],
+["三隅二不二","ミスミジュウジ"],
+["三種の神器","サンシュノジンギ"],
+["権限受容説","ケンゲンジュヨウセツ"],
+["権限法定説","ケンゲンホウテイセツ"],
+["権限職能説","ケンゲンショクノウセツ"],
+["状況好意性","ジョウキョウコウイセイ"],
+["範囲の経済","ハンイノケイザイ"],
+["産業魅力度","サンギョウミリョクド"],
+["速度の経済","ソクドノケイザイ"],
+["金のなる木","カネノナルキ"],
+["寡占的優位","カセンテキユウイ"],
+["独立採算制","ドクリツサイサンセイ"],
+["社内資本金","シャナイシホンキン"],
+["合法的支配","ゴウホウテキシハイ"],
+["野中郁次郎","ノナカイクジロウ"],
+["採用遅延者","サイヨウチエンシャ"],
+["企業家精神","キギョウカセイシン"],
+["過小値付け","カショウネヅケ"],
+["機関化現象","キカンカゲンショウ"],
+["物言う株主","モノイウカブヌシ"],
+["白紙委任状","ハクシイニンジョウ"],
+["低所得者層","テイショトクシャソウ"],
+["概念化能力","ガイネンカノウリョク"],
+["抱き合わせ","ダキアワセ"],
+["支払意思額","シハライイシガク"],
+["取引数節約","トリヒキスウセツヤク"],
+["同質化対応","ドウシツカタイオウ"],
+["辞書編纂型","ジショヘンサンガタ"],
+["逐次消去型","チクジショウキョガタ"],
+["感情依拠型","カンジョウイキョガタ"],
+["線形補償型","センケイホショウガタ"],
+["非計画購買","ヒケイカクコウバイ"],
+["顧客満足度","コキャクマンゾクド"],
+["累積採用率","ルイセキサイヨウリツ"],
+["市場の達人","シジョウノタツジン"],
+["需要を喚起","ジュヨウヲカンキ"],
+["価格弾力性","カカクダンリョクセイ"],
+["AIDMA","アイドマ"],
+["AISAS","アイサス"],
+["TDnet","ティーディーネット"],
+["Hi-Lo","ハイロー"],
+["3iモデル","スリーアイモデル"],
+["7Sモデル","セブンエスモデル"],
+["3Sモデル","スリーエスモデル"],
+["Voice","ボイス"],
+["Check","チェック"],
+["小文字pm","コモジピーエム"],
+["大文字PM","オオモジピーエム"],
+["成行管理","ナリユキカンリ"],
+["無関心圏","ムカンシンケン"],
+["準拠集団","ジュンキョシュウダン"],
+["過小報酬","カショウホウシュウ"],
+["過大報酬","カダイホウシュウ"],
+["職務充実","ショクムジュウジツ"],
+["職務拡大","ショクムカクダイ"],
+["職務転換","ショクムテンカン"],
+["部内者化","ブナイシャカ"],
+["年功序列","ネンコウジョレツ"],
+["定期昇給","テイキショウキュウ"],
+["持株会社","モチカブガイシャ"],
+["買付価格","カイツケカカク"],
+["代替製品","ダイタイセイヒン"],
+["撤退障壁","テッタイショウヘキ"],
+["希少資源","キショウシゲン"],
+["非人格化","ヒジンカクカ"],
+["学習棄却","ガクシュウキキャク"],
+["帆船効果","ハンセンコウカ"],
+["入札方式","ニュウサツホウシキ"],
+["規律付け","キリツヅケ"],
+["持株比率","モチカブヒリツ"],
+["監査役会","カンサヤクカイ"],
+["決算短信","ケッサンタンシン"],
+["集団浅慮","シュウダンセンリョ"],
+["便益の束","ベンエキノタバ"],
+["買回り品","カイマワリヒン"],
+["付随製品","フズイセイヒン"],
+["卸売業者","オロシウリギョウシャ"],
+["小売業者","コウリギョウシャ"],
+["報道機関","ホウドウキカン"],
+["購買意欲","コウバイイヨク"],
+["広報活動","コウホウカツドウ"],
+["知覚品質","チカクヒンシツ"],
+["知名集合","チメイシュウゴウ"],
+["想起集合","ソウキシュウゴウ"],
+["保留集合","ホリュウシュウゴウ"],
+["拒否集合","キョヒシュウゴウ"],
+["考慮段階","コウリョダンカイ"],
+["選考段階","センコウダンカイ"],
+["未採用率","ミサイヨウリツ"],
+["文脈効果","ブンミャクコウカ"],
+["妥協効果","ダキョウコウカ"],
+["損失回避","ソンシツカイヒ"],
+["存在意義","ソンザイイギ"],
+["市場浸透","シジョウシントウ"],
+["AIDA","アイダ"],
+["SIPS","シップス"],
+["SDGs","エスディージーズ"],
+["VUCA","ブーカ"],
+["SWOT","スウォット"],
+["PEST","ペスト"],
+["VRIO","ブリオ"],
+["PIMS","ピムズ"],
+["SECI","セキ"],
+["EDLP","イーディーエルピー"],
+["BtoB","ビートゥービー"],
+["BtoC","ビートゥーシー"],
+["SOX法","ソックスホウ"],
+["3C分析","スリーシーブンセキ"],
+["S字曲線","エスジキョクセン"],
+["SHRM","エスエイチアールエム"],
+["EPRG","イーピーアールジー"],
+["PDCA","ピーディーシーエー"],
+["GPIF","ジーピーアイエフ"],
+["PM理論","ピーエムリロン"],
+["SL理論","エスエルリロン"],
+["Exit","イグジット"],
+["Plan","プラン"],
+["出来高","デキダカ"],
+["多能工","タノウコウ"],
+["誘意性","ユウイセイ"],
+["手段性","シュダンセイ"],
+["受諾圏","ジュダクケン"],
+["準拠力","ジュンキョリョク"],
+["罪悪感","ザイアクカン"],
+["未成熟","ミセイジュク"],
+["職能別","ショクノウベツ"],
+["成熟度","セイジュクド"],
+["離転職","リテンショク"],
+["格付け","カクヅケ"],
+["垂直的","スイチョクテキ"],
+["水平的","スイヘイテキ"],
+["同心的","ドウシンテキ"],
+["集約型","シュウヤクガタ"],
+["拡散型","カクサンガタ"],
+["負け犬","マケイヌ"],
+["問題児","モンダイジ"],
+["空洞化","クウドウカ"],
+["委任状","イニンジョウ"],
+["希少性","キショウセイ"],
+["官僚制","カンリョウセイ"],
+["逆機能","ギャクキノウ"],
+["暗黙知","アンモクチ"],
+["形式知","ケイシキチ"],
+["表出化","ヒョウシュツカ"],
+["内面化","ナイメンカ"],
+["連結化","レンケツカ"],
+["共同化","キョウドウカ"],
+["探索財","タンサクザイ"],
+["弱体化","ジャクタイカ"],
+["新結合","シンケツゴウ"],
+["旧結合","キュウケツゴウ"],
+["供給源","キョウキュウゲン"],
+["脱成熟","ダツセイジュク"],
+["魔の川","マノカワ"],
+["死の谷","シノタニ"],
+["孵卵器","フランキ"],
+["累進的","ルイシンテキ"],
+["排出量","ハイシュツリョウ"],
+["吸収量","キュウシュウリョウ"],
+["幻滅感","ゲンメツカン"],
+["再凍結","サイトウケツ"],
+["青緑色","アオミドリイロ"],
+["同型化","ドウケイカ"],
+["局地化","キョクチカ"],
+["粘着性","ネンチャクセイ"],
+["最寄品","モヨリヒン"],
+["専門品","センモンヒン"],
+["経験財","ケイケンザイ"],
+["信用財","シンヨウザイ"],
+["生産財","セイサンザイ"],
+["消費財","ショウヒザイ"],
+["功利的","コウリテキ"],
+["快楽的","カイラクテキ"],
+["近視眼","キンシガン"],
+["執着心","シュウチャクシン"],
+["生活体","セイカツタイ"],
+["能動的","ノウドウテキ"],
+["代替案","ダイタイアン"],
+["X理論","エックスリロン"],
+["Y理論","ワイリロン"],
+["PPM","ピーピーエム"],
+["KSF","ケーエスエフ"],
+["TOB","ティーオービー"],
+["LBO","エルビーオー"],
+["MBO","エムビーオー"],
+["M&A","エムアンドエー"],
+["BOP","ビーオーピー"],
+["CSV","シーエスブイ"],
+["CSR","シーエスアール"],
+["SRI","エスアールアイ"],
+["ESG","イーエスジー"],
+["PRI","ピーアールアイ"],
+["QWL","キューダブリューエル"],
+["CDP","シーディーピー"],
+["OCB","オーシービー"],
+["RJP","アールジェーピー"],
+["HRM","エイチアールエム"],
+["SBU","エスビーユー"],
+["BPR","ビーピーアール"],
+["SCM","エスシーエム"],
+["POS","ポス"],
+["KPI","ケーピーアイ"],
+["BSC","ビーエスシー"],
+["NIH","エヌアイエイチ"],
+["MOT","エムオーティー"],
+["TLO","ティーエルオー"],
+["IPO","アイピーオー"],
+["CVC","シーブイシー"],
+["EMS","イーエムエス"],
+["OEM","オーイーエム"],
+["ODM","オーディーエム"],
+["OLI","オーエルアイ"],
+["STP","エスティーピー"],
+["CRM","シーアールエム"],
+["PSM","ピーエスエム"],
+["VMS","ブイエムエス"],
+["SPA","エスピーエー"],
+["GRP","ジーアールピー"],
+["CTR","シーティーアール"],
+["CVR","シーブイアール"],
+["IMC","アイエムシー"],
+["ELM","イーエルエム"],
+["SOR","エスオーアール"],
+["WTP","ダブリューティーピー"],
+["IoT","アイオーティー"],
+["LPC","エルピーシー"],
+["ERG","イーアールジー"],
+["OJT","オージェーティー"],
+["TQC","ティーキューシー"],
+["JIT","ジェーアイティー"],
+["CEO","シーイーオー"],
+["CFO","シーエフオー"],
+["COO","シーオーオー"],
+["CTO","シーティーオー"],
+["NPO","エヌピーオー"],
+["NGO","エヌジーオー"],
+["SCP","エスシーピー"],
+["S1型","エスワンガタ"],
+["S4型","エスヨンガタ"],
+["POD","ピーオーディー"],
+["POP","ピーオーピー"],
+["USP","ユーエスピー"],
+["ISO","アイエスオー"],
+["P機能","ピーキノウ"],
+["M機能","エムキノウ"],
+["低次","テイジ"],
+["高次","コウジ"],
+["課業","カギョウ"],
+["職長","ショクチョウ"],
+["賃率","チンリツ"],
+["怠業","タイギョウ"],
+["稟議","リンギ"],
+["誘因","ユウイン"],
+["職能","ショクノウ"],
+["花形","ハナガタ"],
+["立地","リッチ"],
+["争奪","ソウダツ"],
+["縦長","タテナガ"],
+["横広","ヨコヒロ"],
+["深化","シンカ"],
+["探索","タンサク"],
+["財貨","ザイカ"],
+["販路","ハンロ"],
+["打破","ダハ"],
+["初値","ハツネ"],
+["落札","ラクサツ"],
+["棄却","キキャク"],
+["均衡","キンコウ"],
+["劣悪","レツアク"],
+["熟達","ジュクタツ"],
+["解凍","カイトウ"],
+["慣性","カンセイ"],
+["便益","ベンエキ"],
+["割安","ワリヤス"],
+["投機","トウキ"],
+["破線","ハセン"],
+["実線","ジッセン"],
+["察知","サッチ"],
+["醸成","ジョウセイ"],
+["VC","ブイシー"],
+["AI","エーアイ"],
+["FA","エフエー"],
+["PR","ピーアール"],
+["PM","ピーエム"],
+["pm","ピーエム"],
+["Do","ドゥ"]
+];
+
+function toSpeech(t){
+  if(!S.fixRead || !t) return t;
+  let out = t;
+  for(let i=0;i<READ.length;i++){
+    const k = READ[i][0];
+    if(out.indexOf(k) >= 0) out = out.split(k).join(READ[i][1]);
+  }
+  return out;
+}
+
 /* ============ speech ============ */
 /* iOS Safari は、利用者が一度画面に触れて音声を鳴らすまで
    getVoices() が空を返すことがある。最初のタップで無音を一度鳴らして解錠する。 */
@@ -932,39 +1264,72 @@ function unlockSpeech(){
 );
 
 function allVoices(){
-  let vs = [];
-  try{ vs = speechSynthesis.getVoices() || []; }catch(e){ return []; }
-  const ja = vs.filter(v=>/ja[-_]JP|Japanese|日本/i.test(v.lang+" "+v.name));
-  return ja.length ? ja : vs;
+  try{ return speechSynthesis.getVoices() || []; }catch(e){ return []; }
 }
+function jaVoices(){
+  return allVoices().filter(v=>/ja[-_]JP|Japanese|日本/i.test(v.lang+" "+v.name));
+}
+/* 端末の標準音声。日本語があればそれを、なければ全体から選ぶ */
+function candidates(){
+  const ja = jaVoices();
+  return ja.length ? ja : allVoices();
+}
+/* 声の性格をわかりやすく添える */
+const VOICE_NOTE = {
+  "Kyoko":"女性・標準","Otoya":"男性","Hattori":"男性","O-ren":"女性",
+  "Siri":"シリの声","Google 日本語":"女性","Google日本語":"女性"
+};
+function labelOf(v){
+  const note = Object.keys(VOICE_NOTE).find(k=>v.name.indexOf(k)>=0);
+  const tail = note ? "（" + VOICE_NOTE[note] + "）" : (/ja[-_]JP/i.test(v.lang) ? "" : "（" + v.lang + "）");
+  return v.name + tail;
+}
+
 function pickVoice(){
-  const vs = allVoices();
-  if(!vs.length){ voice = null; return; }
-  const saved = S.voiceURI && vs.find(v=>v.voiceURI===S.voiceURI);
-  voice = saved || vs.find(v=>/Kyoko|O-ren|Otoya|Hattori|Google/i.test(v.name)) || vs[0];
+  const vs = candidates();
+  if(!vs.length){ voiceQ = voiceA = null; return; }
+  const byURI = u => u && vs.find(v=>v.voiceURI===u);
+  const dflt = vs.find(v=>/Kyoko/i.test(v.name)) || vs.find(v=>/O-ren|Google/i.test(v.name)) || vs[0];
+  const other = vs.find(v=>/Otoya|Hattori/i.test(v.name)) || vs.find(v=>v!==dflt) || dflt;
+  voiceQ = byURI(S.voiceURI)  || dflt;
+  voiceA = byURI(S.voiceURI2) || other;
 }
-function fillVoiceList(){
-  const sel = $("#selVoice");
+
+function fillOne(sel, chosen){
   if(!sel) return;
-  const vs = allVoices();
-  const prev = sel.value;
+  const ja = jaVoices(), all = allVoices();
   sel.innerHTML = "";
-  if(!vs.length){
+  if(!all.length){
     const o = document.createElement("option");
     o.textContent = "まだ検出できていません";
-    sel.appendChild(o); sel.disabled = true;
-    $("#voiceHint").textContent = "一度「試聴」か「開始」を押すと音声一覧が読み込まれます。それでも出ない場合は「音声を再検出」を押してください。";
-    return;
+    sel.appendChild(o); sel.disabled = true; return;
   }
   sel.disabled = false;
-  vs.forEach(v=>{
-    const o = document.createElement("option");
-    o.value = v.voiceURI;
-    o.textContent = v.name + (/ja[-_]JP/i.test(v.lang) ? "" : "（" + v.lang + "）");
-    sel.appendChild(o);
-  });
-  if(voice) sel.value = voice.voiceURI; else if(prev) sel.value = prev;
-  $("#voiceHint").textContent = vs.length + "種類の音声が使えます。iPhoneが追加で読み込んだ声は「音声を再検出」で出てくることがあります。";
+  const add = (list, title)=>{
+    if(!list.length) return;
+    const g = document.createElement("optgroup"); g.label = title;
+    list.forEach(v=>{
+      const o = document.createElement("option");
+      o.value = v.voiceURI; o.textContent = labelOf(v);
+      g.appendChild(o);
+    });
+    sel.appendChild(g);
+  };
+  add(ja, "日本語の声");
+  add(all.filter(v=>ja.indexOf(v)<0), "その他の言語");
+  if(chosen) sel.value = chosen.voiceURI;
+}
+function fillVoiceList(){
+  fillOne($("#selVoice"),  voiceQ);
+  fillOne($("#selVoice2"), voiceA);
+  const hint = $("#voiceHint");
+  if(!hint) return;
+  const n = jaVoices().length, m = allVoices().length;
+  if(!m){
+    hint.textContent = "一度「試聴」か「開始」を押すと音声一覧が読み込まれます。出ない場合は「音声を再検出」を押してください。";
+  }else{
+    hint.textContent = "日本語の声 " + n + "件 / 全体 " + m + "件。問題と解答で別の声にすると聞き分けやすくなります。";
+  }
 }
 /* 音声一覧の用意が遅れることがあるため、しばらく取り直し続ける */
 function chaseVoices(){
@@ -980,13 +1345,13 @@ if("speechSynthesis" in window){
   speechSynthesis.onvoiceschanged = ()=>{ pickVoice(); fillVoiceList(); refreshDiag(); };
   setInterval(()=>{ if(running && speechSynthesis.speaking && !speechSynthesis.paused){ speechSynthesis.pause(); speechSynthesis.resume(); } }, 9000);
 }
-function speak(text, my){
+function speak(text, my, role){
   return new Promise(res=>{
     if(!("speechSynthesis" in window) || !text){ return res(); }
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = S.rate; u.pitch = 1; u.volume = 1;
-    if(voice){ u.voice = voice; u.lang = voice.lang || "ja-JP"; }
-    else { u.lang = "ja-JP"; }
+    const u = new SpeechSynthesisUtterance(toSpeech(text));
+    const v = (role === "a") ? voiceA : voiceQ;
+    u.rate = S.rate; u.pitch = S.pitch; u.volume = 1;
+    if(v){ u.voice = v; u.lang = v.lang || "ja-JP"; } else { u.lang = "ja-JP"; }
     let done = false;
     const fin = ()=>{ if(done) return; done = true; res(); };
     u.onend = fin; u.onerror = fin;
@@ -1063,7 +1428,7 @@ async function run(){
 
     phase("出題中", "問題を読み上げています");
     ringSet(1, undefined);
-    await speak(b.q, my);
+    await speak(b.q, my, "q");
     if(my!==token) return;
 
     phase("考える時間", "声に出して答えてみましょう");
@@ -1074,9 +1439,9 @@ async function run(){
     $("#judge").dataset.on = "1";
     phase("解答", "答え合わせをしてください");
     ringSet(0, "答");
-    await speak("答え。" + b.a, my);
+    await speak("答え。" + b.a, my, "a");
     if(my!==token) return;
-    if(S.readNote && b.n) await speak(b.n, my);
+    if(S.readNote && b.n) await speak(b.n, my, "a");
     if(my!==token) return;
 
     seen[keyOf(b)] = (seen[keyOf(b)]||0)+1; saveState();
@@ -1220,6 +1585,7 @@ function refreshSettingsUI(){
   $("#rngGap").value = S.gap;    $("#outGap").textContent = S.gap+"秒";
   $("#swShowQ").classList.toggle("on", S.showQ);
   $("#swReadNote").classList.toggle("on", S.readNote);
+  $("#swFixRead").classList.toggle("on", S.fixRead);
   $("#swShuffle").classList.toggle("on", S.shuffle);
   $("#swWeakOnly").classList.toggle("on", S.weakOnly);
   $("#swWake").classList.toggle("on", S.wake);
@@ -1239,6 +1605,7 @@ function bindSw(id, key, after){
 }
 bindSw("#swShowQ","showQ", paint);
 bindSw("#swReadNote","readNote");
+bindSw("#swFixRead","fixRead");
 bindSw("#swShuffle","shuffle", afterSettings);
 bindSw("#swWeakOnly","weakOnly", afterSettings);
 bindSw("#swWake","wake", ()=>{ if(!S.wake) releaseWake(); else if(running) requestWake(); });
