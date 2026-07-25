@@ -1,0 +1,16 @@
+{
+  "name": "経営学 音声一問一答",
+  "short_name": "経営学一問一答",
+  "description": "公認会計士試験 経営学（経営管理）の音声ハンズフリー一問一答",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#faf8f4",
+  "theme_color": "#faf8f4",
+  "lang": "ja",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

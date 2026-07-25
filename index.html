@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="経営学一問一答">
 <meta name="theme-color" content="#faf8f4">
+<link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAAEWklEQVR42u3dMVLeMBDFcbOTW6RLRZGGi3EYLkaTgipdbkDBUKVIm+GzQdp9b/f/6sxEWv+0ko0xd+9vrwch/0tQAgIOAg4CDgIOAg4CDgIOAg4CDgIOQsBBwEHAQcBBwEHAQcBBwEHAQQg4CDgIOMiO/AUL8VZuFprhHwAAAABJRU5ErkJggg==">
 <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAAEWklEQVR42u3dMVLeMBDFcbOTW6RLRZGGi3EYLkaTgipdbkDBUKVIm+GzQdp9b/f/6sxEWv+0ko0xd+9vrwch/0tQAgIOAg4CDgIOAg4CDgIOAg4CDgIOQsBBwEHAQcBBwEHAQcBBwEHAQQg4CDgIOMiO/AUL8VZuFprhHwAAAABJRU5ErkJggg==">
 <title>経営学 音声一問一答｜第9章〜第18章</title>
@@ -266,6 +267,9 @@ select{
         <select id="selVoice" aria-label="読み上げに使う声"></select>
         <button class="try" id="btnTry">試聴</button>
       </div>
+      <div class="selrow" style="margin-top:8px">
+        <button class="try" id="btnRescan" style="flex:1">音声を再検出</button>
+      </div>
       <p class="hint" id="voiceHint">この端末に入っている音声から選べます。</p>
     </div>
 
@@ -304,6 +308,11 @@ select{
         color:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;
         font-family:ui-monospace,monospace" spellcheck="false"></textarea>
       <p class="hint" id="dataHint" style="display:none"></p>
+    </div>
+
+    <div class="grp">
+      <label>動作状況</label>
+      <p class="hint" id="diagBody" style="margin-top:0">確認中…</p>
     </div>
 
     <p class="warn">iPhoneは画面をロックすると読み上げが止まります。ロックせず伏せて置くか、画面の自動ロックをオフにしてお使いください。</p>
@@ -732,26 +741,108 @@ const S = {
   showQ: true, readNote: true, shuffle: true, weakOnly: false, wake: true
 };
 let queue = [], idx = 0, running = false, token = 0, weak = {}, seen = {};
-let wakeLock = null, voice = null;
+let wakeLock = null, voice = null, swState = "未対応";
+
+/* Service Worker（sw.js を同じ場所に置くとオフラインで使える） */
+if("serviceWorker" in navigator && location.protocol === "https:"){
+  swState = "登録中";
+  navigator.serviceWorker.register("sw.js")
+    .then(()=>{ swState = "有効"; refreshDiag(); })
+    .catch(()=>{ swState = "sw.js が未設置"; refreshDiag(); });
+}else if(location.protocol !== "https:"){
+  swState = "https でないため無効";
+}
 
 /* ============ storage ============ */
 /* 3段構え: localStorage → window.storage → メモリ。
    どれか一つでも生きていれば保存できる。全滅時は書き出し機能で退避。 */
 const Store = {
-  mem:{}, okLS:false, okWS:false,
+  mem:{}, okLS:false, okIDB:false, okCK:false, okWS:false, lastErr:"",
+  db:null,
+  /* --- IndexedDB（Safariで最も残りやすい） --- */
+  openDB(){
+    return new Promise(res=>{
+      if(this.db) return res(this.db);
+      try{
+        const rq = indexedDB.open("keieiVoiceQA", 1);
+        rq.onupgradeneeded = ()=>{ rq.result.createObjectStore("kv"); };
+        rq.onsuccess = ()=>{ this.db = rq.result; this.okIDB = true; res(this.db); };
+        rq.onerror = ()=>{ this.lastErr = "idb"; res(null); };
+        setTimeout(()=>res(this.db), 1500);
+      }catch(e){ this.lastErr = "idb"; res(null); }
+    });
+  },
+  async idbGet(k){
+    const db = await this.openDB(); if(!db) return null;
+    return new Promise(res=>{
+      try{
+        const rq = db.transaction("kv","readonly").objectStore("kv").get(k);
+        rq.onsuccess = ()=>res(rq.result ?? null);
+        rq.onerror = ()=>res(null);
+      }catch(e){ res(null); }
+    });
+  },
+  async idbSet(k,v){
+    const db = await this.openDB(); if(!db) return;
+    return new Promise(res=>{
+      try{
+        const tx = db.transaction("kv","readwrite");
+        tx.objectStore("kv").put(v,k);
+        tx.oncomplete = ()=>{ this.okIDB = true; res(); };
+        tx.onerror = ()=>res();
+      }catch(e){ res(); }
+    });
+  },
+  /* --- Cookie（小さい設定だけの保険） --- */
+  ckGet(k){
+    try{
+      const m = document.cookie.match(new RegExp("(?:^|; )keiei_"+k+"=([^;]*)"));
+      return m ? decodeURIComponent(m[1]) : null;
+    }catch(e){ return null; }
+  },
+  ckSet(k,v){
+    try{
+      if(v.length > 3000) return;
+      document.cookie = "keiei_"+k+"="+encodeURIComponent(v)+"; path=/; max-age=31536000; SameSite=Lax";
+      this.okCK = document.cookie.indexOf("keiei_"+k) >= 0;
+    }catch(e){}
+  },
   async get(k){
-    try{ const v = localStorage.getItem("keiei_"+k); if(v!==null){ this.okLS=true; return v; } }catch(e){}
+    try{ const v = localStorage.getItem("keiei_"+k); if(v!==null){ this.okLS=true; return v; } }catch(e){ this.lastErr="ls"; }
+    const iv = await this.idbGet(k); if(iv!=null) return iv;
+    const cv = this.ckGet(k); if(cv!=null) return cv;
     try{ const r = await window.storage.get(k); if(r && r.value!=null){ this.okWS=true; return r.value; } }catch(e){}
     return (k in this.mem) ? this.mem[k] : null;
   },
   async set(k,v){
     this.mem[k]=v;
-    try{ localStorage.setItem("keiei_"+k,v); this.okLS=true; }catch(e){}
+    try{ localStorage.setItem("keiei_"+k,v); this.okLS=true; }catch(e){ this.okLS=false; this.lastErr="ls"; }
+    await this.idbSet(k,v);
+    this.ckSet(k,v);
     try{ await window.storage.set(k,v); this.okWS=true; }catch(e){}
   },
-  probe(){
-    try{ localStorage.setItem("keiei_probe","1"); localStorage.removeItem("keiei_probe"); this.okLS=true; }catch(e){ this.okLS=false; }
-    return this.okLS;
+  /* 実際に書いて読み直せるかを試す */
+  async probe(){
+    const stamp = String(Date.now());
+    try{
+      localStorage.setItem("keiei_probe", stamp);
+      this.okLS = (localStorage.getItem("keiei_probe") === stamp);
+      localStorage.removeItem("keiei_probe");
+    }catch(e){ this.okLS = false; this.lastErr = "ls"; }
+    await this.idbSet("probe", stamp);
+    this.okIDB = (await this.idbGet("probe")) === stamp;
+    this.ckSet("probe", stamp);
+    this.okCK = this.ckGet("probe") === stamp;
+    try{ await window.storage.set("probe", stamp); this.okWS = true; }catch(e){ this.okWS = false; }
+    return this.okLS || this.okIDB || this.okCK || this.okWS;
+  },
+  where(){
+    const a = [];
+    if(this.okLS) a.push("ブラウザ保存");
+    if(this.okIDB) a.push("データベース");
+    if(this.okCK) a.push("クッキー");
+    if(this.okWS) a.push("アプリ保存");
+    return a;
   }
 };
 
@@ -776,10 +867,34 @@ function saveState(){
 function updateSaveBadge(){
   const el = document.querySelector("#saveState");
   if(!el) return;
-  if(Store.okLS) el.textContent = "この端末に保存されています。";
-  else if(Store.okWS) el.textContent = "アプリ側に保存されています。";
-  else el.textContent = "この環境では自動保存ができません。下の書き出しで控えを取ってください。";
-  el.style.color = (Store.okLS||Store.okWS) ? "var(--muted)" : "var(--coral)";
+  const w = Store.where();
+  if(w.length){
+    el.textContent = "保存先：" + w.join("、") + "。次に開いたときも残ります。";
+    el.style.color = "var(--muted)";
+  }else{
+    el.textContent = "この環境では自動保存ができません。プライベートブラウズを解除するか、下の書き出しで控えを取ってください。";
+    el.style.color = "var(--coral)";
+  }
+}
+function refreshDiag(){
+  const el = document.querySelector("#diagBody");
+  if(!el) return;
+  const vs = (()=>{ try{ return speechSynthesis.getVoices().length; }catch(e){ return 0; } })();
+  const ja = (()=>{ try{ return speechSynthesis.getVoices().filter(v=>/ja[-_]JP/i.test(v.lang)).length; }catch(e){ return 0; } })();
+  const standalone = (window.navigator.standalone === true) ||
+    (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
+  const rows = [
+    ["起動のしかた", standalone ? "ホーム画面から（推奨）" : "ブラウザのタブ"],
+    ["読み上げ機能", ("speechSynthesis" in window) ? "使える" : "使えない"],
+    ["音声の解錠", unlocked ? "済み" : "まだ（画面を一度タップ）"],
+    ["検出した音声", vs + "件（うち日本語 " + ja + "件）"],
+    ["選択中の声", voice ? voice.name : "未選択"],
+    ["ブラウザ保存", Store.okLS ? "使える" : "使えない"],
+    ["データベース", Store.okIDB ? "使える" : "使えない"],
+    ["クッキー", Store.okCK ? "使える" : "使えない"],
+    ["オフライン対応", swState]
+  ];
+  el.innerHTML = rows.map(r=>r[0]+"：<b>"+r[1]+"</b>").join("<br>");
 }
 
 function exportData(){
@@ -798,16 +913,35 @@ async function importData(txt){
 const keyOf = b => b.c + "|" + b.q.slice(0,18);
 
 /* ============ speech ============ */
+/* iOS Safari は、利用者が一度画面に触れて音声を鳴らすまで
+   getVoices() が空を返すことがある。最初のタップで無音を一度鳴らして解錠する。 */
+let unlocked = false;
+function unlockSpeech(){
+  if(unlocked || !("speechSynthesis" in window)) return;
+  unlocked = true;
+  try{
+    const u = new SpeechSynthesisUtterance("　");
+    u.volume = 0; u.lang = "ja-JP";
+    speechSynthesis.speak(u);
+    setTimeout(()=>{ try{ speechSynthesis.cancel(); }catch(e){} }, 60);
+  }catch(e){}
+  [200,600,1200,2500].forEach(t=>setTimeout(()=>{ pickVoice(); fillVoiceList(); refreshDiag(); }, t));
+}
+["pointerdown","touchstart","click","keydown"].forEach(ev=>
+  document.addEventListener(ev, unlockSpeech, {once:false, passive:true})
+);
+
 function allVoices(){
-  const vs = speechSynthesis.getVoices();
-  const ja = vs.filter(v=>/ja[-_]JP|Japanese/i.test(v.lang+" "+v.name));
+  let vs = [];
+  try{ vs = speechSynthesis.getVoices() || []; }catch(e){ return []; }
+  const ja = vs.filter(v=>/ja[-_]JP|Japanese|日本/i.test(v.lang+" "+v.name));
   return ja.length ? ja : vs;
 }
 function pickVoice(){
   const vs = allVoices();
   if(!vs.length){ voice = null; return; }
   const saved = S.voiceURI && vs.find(v=>v.voiceURI===S.voiceURI);
-  voice = saved || vs.find(v=>/Kyoko|O-ren|Otoya|Google/i.test(v.name)) || vs[0];
+  voice = saved || vs.find(v=>/Kyoko|O-ren|Otoya|Hattori|Google/i.test(v.name)) || vs[0];
 }
 function fillVoiceList(){
   const sel = $("#selVoice");
@@ -817,9 +951,9 @@ function fillVoiceList(){
   sel.innerHTML = "";
   if(!vs.length){
     const o = document.createElement("option");
-    o.textContent = "音声が見つかりません";
+    o.textContent = "まだ検出できていません";
     sel.appendChild(o); sel.disabled = true;
-    $("#voiceHint").innerHTML = "この環境からは端末の音声を読み取れません。<b>Safariで開く</b>と、iPhoneに入っている声を選べるようになります。";
+    $("#voiceHint").textContent = "一度「試聴」か「開始」を押すと音声一覧が読み込まれます。それでも出ない場合は「音声を再検出」を押してください。";
     return;
   }
   sel.disabled = false;
@@ -830,29 +964,29 @@ function fillVoiceList(){
     sel.appendChild(o);
   });
   if(voice) sel.value = voice.voiceURI; else if(prev) sel.value = prev;
-  $("#voiceHint").textContent = vs.length + "種類の音声が使えます。声が少ないときは、Safariで開くと端末の音声が全て出てきます。";
+  $("#voiceHint").textContent = vs.length + "種類の音声が使えます。iPhoneが追加で読み込んだ声は「音声を再検出」で出てくることがあります。";
 }
-/* iOSは音声一覧の用意が遅れることがあるため数秒間ねばって取り直す */
+/* 音声一覧の用意が遅れることがあるため、しばらく取り直し続ける */
 function chaseVoices(){
   let n = 0;
   const iv = setInterval(()=>{
     n++;
-    const before = allVoices().length;
-    pickVoice(); fillVoiceList();
-    if(before > 0 || n > 12) clearInterval(iv);
+    pickVoice(); fillVoiceList(); refreshDiag();
+    if(allVoices().length > 0 || n > 20) clearInterval(iv);
   }, 400);
 }
 if("speechSynthesis" in window){
   pickVoice();
-  speechSynthesis.onvoiceschanged = ()=>{ pickVoice(); fillVoiceList(); };
+  speechSynthesis.onvoiceschanged = ()=>{ pickVoice(); fillVoiceList(); refreshDiag(); };
   setInterval(()=>{ if(running && speechSynthesis.speaking && !speechSynthesis.paused){ speechSynthesis.pause(); speechSynthesis.resume(); } }, 9000);
 }
 function speak(text, my){
   return new Promise(res=>{
     if(!("speechSynthesis" in window) || !text){ return res(); }
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = "ja-JP"; u.rate = S.rate; u.pitch = 1;
-    if(voice) u.voice = voice;
+    u.rate = S.rate; u.pitch = 1; u.volume = 1;
+    if(voice){ u.voice = voice; u.lang = voice.lang || "ja-JP"; }
+    else { u.lang = "ja-JP"; }
     let done = false;
     const fin = ()=>{ if(done) return; done = true; res(); };
     u.onend = fin; u.onerror = fin;
@@ -1042,6 +1176,12 @@ function preview(){
   if(voice) u.voice = voice;
   speechSynthesis.speak(u);
 }
+$("#btnRescan").onclick = ()=>{
+  unlocked = false; unlockSpeech();
+  try{ speechSynthesis.getVoices(); }catch(e){}
+  pickVoice(); fillVoiceList(); chaseVoices(); refreshDiag();
+  $("#voiceHint").textContent = "再検出しています…";
+};
 $("#btnTry").onclick = ()=>{ if(running){ running=false; token++; stopSpeech(); $("#btnPlay").textContent="▶ 再開"; } preview(); };
 
 $("#btnExport").onclick = async ()=>{
@@ -1112,7 +1252,12 @@ function afterSettings(){
 
 function openSheet(id){ $(id).classList.add("open"); }
 function closeSheet(id){ $(id).classList.remove("open"); }
-$("#btnSet").onclick = ()=>{ pickVoice(); fillVoiceList(); chaseVoices(); updateSaveBadge(); openSheet("#sheetSet"); };
+$("#btnSet").onclick = async ()=>{
+  openSheet("#sheetSet");
+  pickVoice(); fillVoiceList(); chaseVoices();
+  refreshDiag();
+  await Store.probe(); updateSaveBadge(); refreshDiag();
+};
 $("#btnCloseSet").onclick = ()=>{ if(!running) stopSpeech(); closeSheet("#sheetSet"); };
 $("#sheetSet").onclick = e=>{ if(e.target.id==="sheetSet") closeSheet("#sheetSet"); };
 $("#btnStats").onclick = ()=>{ renderStats(); openSheet("#sheetStats"); };
@@ -1137,7 +1282,7 @@ function renderStats(){
 /* ============ boot ============ */
 (async function(){
   applyTheme();
-  Store.probe();
+  await Store.probe();
   await loadState();
   applyTheme();
   S.chapters = new Set([...S.chapters].filter(c=>CH.includes(c)));
@@ -1146,6 +1291,7 @@ function renderStats(){
   refreshSettingsUI();
   updateSaveBadge();
   pickVoice(); fillVoiceList(); chaseVoices();
+  refreshDiag();
   build();
   ringSet(0,"—");
   phase("待機中", BANK.length + "問を収録しています");
