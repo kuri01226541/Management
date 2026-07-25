@@ -294,6 +294,12 @@ select{
         <input type="range" id="rngPitch" min="0.6" max="1.6" step="0.05" value="1">
         <output id="outPitch">1.00</output>
       </div>
+      <p class="hint" style="margin-top:10px">解答の声だけずらす</p>
+      <div class="slider">
+        <input type="range" id="rngPitchDiff" min="-0.4" max="0.4" step="0.05" value="-0.15">
+        <output id="outPitchDiff">-0.15</output>
+      </div>
+      <p class="hint">日本語の声が1種類しかない端末でも、これをずらせば問題と解答を聞き分けられます。</p>
     </div>
 
     <div class="grp">
@@ -308,6 +314,7 @@ select{
       <div class="toggle"><span>問題文を画面に表示する</span><div class="sw on" id="swShowQ"></div></div>
       <div class="toggle"><span>解説も読み上げる</span><div class="sw on" id="swReadNote"></div></div>
       <div class="toggle"><span>専門用語の読み方を補正する</span><div class="sw on" id="swFixRead"></div></div>
+      <div class="toggle"><span>録音音声があれば優先して使う</span><div class="sw on" id="swUseAudio"></div></div>
       <div class="toggle"><span>順番をシャッフルする</span><div class="sw on" id="swShuffle"></div></div>
       <div class="toggle"><span>「あとで復習」だけ出題する</span><div class="sw" id="swWeakOnly"></div></div>
       <div class="toggle"><span>画面を消さない</span><div class="sw on" id="swWake"></div></div>
@@ -753,8 +760,8 @@ const CHNAME = {9:"経営管理論",10:"経営戦略論",11:"経営組織論",12
 
 const S = {
   chapters: new Set(CH),
-  think: 8, rate: 1.05, gap: 2, pitch: 1, voiceURI: "", voiceURI2: "", theme: "light",
-  showQ: true, readNote: true, shuffle: true, weakOnly: false, wake: true, fixRead: true
+  think: 8, rate: 1.05, gap: 2, pitch: 1, pitchDiff: -0.15, voiceURI: "", voiceURI2: "", theme: "light",
+  showQ: true, readNote: true, shuffle: true, weakOnly: false, wake: true, fixRead: true, useAudio: true
 };
 let queue = [], idx = 0, running = false, token = 0, weak = {}, seen = {};
 let wakeLock = null, voiceQ = null, voiceA = null, swState = "未対応";
@@ -909,7 +916,8 @@ function refreshDiag(){
     ["ブラウザ保存", Store.okLS ? "使える" : "使えない"],
     ["データベース", Store.okIDB ? "使える" : "使えない"],
     ["クッキー", Store.okCK ? "使える" : "使えない"],
-    ["オフライン対応", swState]
+    ["オフライン対応", swState],
+    ["録音音声", audioReady ? (Object.keys(audioMap).length + "問ぶん あり") : "なし（端末の合成音声を使用）"]
   ];
   el.innerHTML = rows.map(r=>r[0]+"：<b>"+r[1]+"</b>").join("<br>");
 }
@@ -1275,7 +1283,7 @@ function unlockSpeech(){
   [200,600,1200,2500].forEach(t=>setTimeout(()=>{ pickVoice(); fillVoiceList(); refreshDiag(); }, t));
 }
 ["pointerdown","touchstart","click","keydown"].forEach(ev=>
-  document.addEventListener(ev, unlockSpeech, {once:false, passive:true})
+  document.addEventListener(ev, ()=>{ unlockSpeech(); unlockAudio(); }, {once:false, passive:true})
 );
 
 function allVoices(){
@@ -1343,7 +1351,9 @@ function fillVoiceList(){
   if(!m){
     hint.textContent = "一度「試聴」か「開始」を押すと音声一覧が読み込まれます。出ない場合は「音声を再検出」を押してください。";
   }else{
-    hint.textContent = "日本語の声 " + n + "件 / 全体 " + m + "件。問題と解答で別の声にすると聞き分けやすくなります。";
+    hint.textContent = (n <= 1)
+      ? "日本語の声はこの端末に " + n + "件だけです（全体 " + m + "件）。下の「解答の声だけずらす」で聞き分けを付けられます。"
+      : "日本語の声 " + n + "件 / 全体 " + m + "件。問題と解答で別の声にすると聞き分けやすくなります。";
   }
 }
 /* 音声一覧の用意が遅れることがあるため、しばらく取り直し続ける */
@@ -1360,12 +1370,79 @@ if("speechSynthesis" in window){
   speechSynthesis.onvoiceschanged = ()=>{ pickVoice(); fillVoiceList(); refreshDiag(); };
   setInterval(()=>{ if(running && speechSynthesis.speaking && !speechSynthesis.paused){ speechSynthesis.pause(); speechSynthesis.resume(); } }, 9000);
 }
+/* ============ 録音音声（VOICEVOX等で作った mp3）の再生 ============ */
+const player = new Audio();
+player.preload = "auto";
+let audioMap = null, audioReady = false, audioUnlocked = false;
+const SILENT = "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjYwLjE2LjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAACAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD/////////////////////////////////////////AAAAAExhdmM2MAAAAAAAAAAAAAAAACQEAAAAAAAAASDbBVU4AAAAAAAAAAAAAAAAAAAA//sQxAADwAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV";
+
+function unlockAudio(){
+  if(audioUnlocked) return;
+  audioUnlocked = true;
+  try{ player.src = SILENT; player.play().then(()=>player.pause()).catch(()=>{}); }catch(e){}
+}
+async function loadAudioManifest(){
+  try{
+    const r = await fetch("voice/manifest.json", {cache:"no-cache"});
+    if(!r.ok) throw 0;
+    const j = await r.json();
+    audioMap = j.items || {};
+    audioReady = Object.keys(audioMap).length > 0;
+  }catch(e){ audioMap = null; audioReady = false; }
+  refreshDiag();
+}
+function clipSrc(i, part){
+  return "voice/" + String(i).padStart(4,"0") + "_" + part + ".mp3";
+}
+function hasClip(i, part){
+  if(!S.useAudio || !audioReady || !audioMap) return false;
+  const v = audioMap[String(i)];
+  return !!v && v.indexOf(part) >= 0;
+}
+function playClip(i, part, my){
+  return new Promise(res=>{
+    let done = false;
+    const fin = ok => { if(done) return; done = true; cleanup(); res(ok); };
+    const onEnd = ()=>fin(true);
+    const onErr = ()=>fin(false);
+    function cleanup(){
+      player.removeEventListener("ended", onEnd);
+      player.removeEventListener("error", onErr);
+      clearInterval(iv);
+      $("#dial").classList.remove("speaking");
+    }
+    const iv = setInterval(()=>{ if(my!==token){ try{ player.pause(); }catch(e){} fin(true); } }, 150);
+    player.addEventListener("ended", onEnd);
+    player.addEventListener("error", onErr);
+    try{
+      player.src = clipSrc(i, part);
+      player.playbackRate = Math.max(0.5, Math.min(2, S.rate));
+      $("#dial").classList.add("speaking");
+      const pr = player.play();
+      if(pr && pr.catch) pr.catch(()=>fin(false));
+    }catch(e){ fin(false); }
+  });
+}
+/* 録音音声があればそれを、無ければ端末の合成音声を使う */
+async function say(text, my, role, i, part){
+  if(hasClip(i, part)){
+    const ok = await playClip(i, part, my);
+    if(ok || my!==token) return;
+  }
+  await speak(text, my, role);
+}
+function stopAudio(){ try{ player.pause(); }catch(e){} }
+
+function pitchFor(role){
+  const p = Number(S.pitch) + (role === "a" ? Number(S.pitchDiff) : 0);
+  return Math.max(0.4, Math.min(2, p));
+}
 function speak(text, my, role){
   return new Promise(res=>{
     if(!("speechSynthesis" in window) || !text){ return res(); }
     const u = new SpeechSynthesisUtterance(toSpeech(text));
     const v = (role === "a") ? voiceA : voiceQ;
-    u.rate = S.rate; u.pitch = S.pitch; u.volume = 1;
+    u.rate = S.rate; u.pitch = pitchFor(role); u.volume = 1;
     if(v){ u.voice = v; u.lang = v.lang || "ja-JP"; } else { u.lang = "ja-JP"; }
     let done = false;
     const fin = ()=>{ if(done) return; done = true; res(); };
@@ -1377,7 +1454,7 @@ function speak(text, my, role){
     }, 200);
   });
 }
-function stopSpeech(){ try{ speechSynthesis.cancel(); }catch(e){} $("#dial").classList.remove("speaking"); }
+function stopSpeech(){ try{ speechSynthesis.cancel(); }catch(e){} stopAudio(); $("#dial").classList.remove("speaking"); }
 
 function wait(ms, my){
   return new Promise(res=>{
@@ -1397,6 +1474,7 @@ function ringSet(ratio, num){
 }
 
 /* ============ queue ============ */
+BANK.forEach((b,i)=>{ b._i = i; });
 function build(){
   let pool = BANK.filter(b=>S.chapters.has(b.c));
   if(S.weakOnly) pool = pool.filter(b=>weak[keyOf(b)]);
@@ -1443,7 +1521,7 @@ async function run(){
 
     phase("出題中", "問題を読み上げています");
     ringSet(1, undefined);
-    await speak(b.q, my, "q");
+    await say(b.q, my, "q", b._i, "q");
     if(my!==token) return;
 
     phase("考える時間", "声に出して答えてみましょう");
@@ -1454,9 +1532,9 @@ async function run(){
     $("#judge").dataset.on = "1";
     phase("解答", "答え合わせをしてください");
     ringSet(0, "答");
-    await speak("答え。" + b.a, my, "a");
+    await say("答え。" + b.a, my, "a", b._i, "a");
     if(my!==token) return;
-    if(S.readNote && b.n) await speak(b.n, my, "a");
+    if(S.readNote && b.n) await say(b.n, my, "a", b._i, "n");
     if(my!==token) return;
 
     seen[keyOf(b)] = (seen[keyOf(b)]||0)+1; saveState();
@@ -1563,7 +1641,7 @@ function preview(role){
     : "組織は戦略に従うと唱えたのは誰か。";
   const u = new SpeechSynthesisUtterance(toSpeech(txt));
   const v = (role === "a") ? voiceA : voiceQ;
-  u.rate = S.rate; u.pitch = S.pitch;
+  u.rate = S.rate; u.pitch = pitchFor(role);
   if(v){ u.voice = v; u.lang = v.lang || "ja-JP"; } else { u.lang = "ja-JP"; }
   speechSynthesis.speak(u);
 }
@@ -1612,9 +1690,12 @@ function refreshSettingsUI(){
   $("#rngRate").value = S.rate;  $("#outRate").textContent = S.rate.toFixed(2)+"倍";
   $("#rngGap").value = S.gap;    $("#outGap").textContent = S.gap+"秒";
   $("#rngPitch").value = S.pitch; $("#outPitch").textContent = Number(S.pitch).toFixed(2);
+  $("#rngPitchDiff").value = S.pitchDiff;
+  $("#outPitchDiff").textContent = (S.pitchDiff>0?"+":"") + Number(S.pitchDiff).toFixed(2);
   $("#swShowQ").classList.toggle("on", S.showQ);
   $("#swReadNote").classList.toggle("on", S.readNote);
   $("#swFixRead").classList.toggle("on", S.fixRead);
+  $("#swUseAudio").classList.toggle("on", S.useAudio);
   $("#swShuffle").classList.toggle("on", S.shuffle);
   $("#swWeakOnly").classList.toggle("on", S.weakOnly);
   $("#swWake").classList.toggle("on", S.wake);
@@ -1628,6 +1709,7 @@ bindRange("#rngThink","#outThink","think", v=>v+"秒");
 bindRange("#rngRate","#outRate","rate", v=>v.toFixed(2)+"倍");
 bindRange("#rngGap","#outGap","gap", v=>v+"秒");
 bindRange("#rngPitch","#outPitch","pitch", v=>v.toFixed(2));
+bindRange("#rngPitchDiff","#outPitchDiff","pitchDiff", v=>(v>0?"+":"")+v.toFixed(2));
 
 function bindSw(id, key, after){
   const el = $(id);
@@ -1636,6 +1718,7 @@ function bindSw(id, key, after){
 bindSw("#swShowQ","showQ", paint);
 bindSw("#swReadNote","readNote");
 bindSw("#swFixRead","fixRead");
+bindSw("#swUseAudio","useAudio");
 bindSw("#swShuffle","shuffle", afterSettings);
 bindSw("#swWeakOnly","weakOnly", afterSettings);
 bindSw("#swWake","wake", ()=>{ if(!S.wake) releaseWake(); else if(running) requestWake(); });
@@ -1688,6 +1771,7 @@ function renderStats(){
   refreshSettingsUI();
   updateSaveBadge();
   pickVoice(); fillVoiceList(); chaseVoices();
+  loadAudioManifest();
   refreshDiag();
   build();
   ringSet(0,"—");
