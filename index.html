@@ -263,11 +263,18 @@ select{
 
     <div class="grp">
       <label>声</label>
+      <p class="hint" style="margin:0 0 8px">問題を読む声</p>
       <div class="selrow">
-        <select id="selVoice" aria-label="読み上げに使う声"></select>
+        <select id="selVoice" aria-label="問題を読む声"></select>
         <button class="try" id="btnTry">試聴</button>
       </div>
-      <div class="selrow" style="margin-top:8px">
+      <p class="hint" style="margin:12px 0 8px">解答・解説を読む声</p>
+      <div class="selrow">
+        <select id="selVoice2" aria-label="解答を読む声"></select>
+        <button class="try" id="btnTry2">試聴</button>
+      </div>
+      <div class="selrow" style="margin-top:10px">
+        <button class="try" id="btnSameVoice" style="flex:1">両方を同じ声にする</button>
         <button class="try" id="btnRescan" style="flex:1">音声を再検出</button>
       </div>
       <p class="hint" id="voiceHint">この端末に入っている音声から選べます。</p>
@@ -278,6 +285,14 @@ select{
       <div class="slider">
         <input type="range" id="rngRate" min="0.7" max="1.8" step="0.05" value="1.05">
         <output id="outRate">1.05倍</output>
+      </div>
+    </div>
+
+    <div class="grp">
+      <label>声の高さ</label>
+      <div class="slider">
+        <input type="range" id="rngPitch" min="0.6" max="1.6" step="0.05" value="1">
+        <output id="outPitch">1.00</output>
       </div>
     </div>
 
@@ -1526,19 +1541,30 @@ $("#themeChips").querySelectorAll("button").forEach(b=>{
 });
 if(window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ()=>{ if(S.theme==="auto") applyTheme(); });
 
-$("#selVoice").onchange = ()=>{
-  S.voiceURI = $("#selVoice").value;
-  pickVoice(); saveState();
+function onVoiceChange(){
+  S.voiceURI  = $("#selVoice").value;
+  S.voiceURI2 = $("#selVoice2").value;
+  pickVoice(); saveState(); refreshDiag();
   const wasRunning = running;
   running = false; token++; stopSpeech();
-  if(wasRunning) run(); else preview();
+  if(wasRunning) run();
+}
+$("#selVoice").onchange  = ()=>{ onVoiceChange(); preview("q"); };
+$("#selVoice2").onchange = ()=>{ onVoiceChange(); preview("a"); };
+$("#btnSameVoice").onclick = ()=>{
+  S.voiceURI2 = S.voiceURI = $("#selVoice").value || (voiceQ && voiceQ.voiceURI) || "";
+  pickVoice(); fillVoiceList(); saveState(); refreshDiag(); preview("q");
 };
-function preview(){
+function preview(role){
   if(!("speechSynthesis" in window)) return;
   stopSpeech();
-  const u = new SpeechSynthesisUtterance("組織は戦略に従う。チャンドラーが提唱しました。");
-  u.lang = "ja-JP"; u.rate = S.rate;
-  if(voice) u.voice = voice;
+  const txt = (role === "a")
+    ? "答え。チャンドラーです。組織は戦略に従うと唱えました。"
+    : "組織は戦略に従うと唱えたのは誰か。";
+  const u = new SpeechSynthesisUtterance(toSpeech(txt));
+  const v = (role === "a") ? voiceA : voiceQ;
+  u.rate = S.rate; u.pitch = S.pitch;
+  if(v){ u.voice = v; u.lang = v.lang || "ja-JP"; } else { u.lang = "ja-JP"; }
   speechSynthesis.speak(u);
 }
 $("#btnRescan").onclick = ()=>{
@@ -1547,7 +1573,9 @@ $("#btnRescan").onclick = ()=>{
   pickVoice(); fillVoiceList(); chaseVoices(); refreshDiag();
   $("#voiceHint").textContent = "再検出しています…";
 };
-$("#btnTry").onclick = ()=>{ if(running){ running=false; token++; stopSpeech(); $("#btnPlay").textContent="▶ 再開"; } preview(); };
+function stopForPreview(){ if(running){ running=false; token++; stopSpeech(); $("#btnPlay").textContent="▶ 再開"; } }
+$("#btnTry").onclick  = ()=>{ stopForPreview(); preview("q"); };
+$("#btnTry2").onclick = ()=>{ stopForPreview(); preview("a"); };
 
 $("#btnExport").onclick = async ()=>{
   const box = $("#dataBox"), hint = $("#dataHint");
@@ -1583,6 +1611,7 @@ function refreshSettingsUI(){
   $("#rngThink").value = S.think; $("#outThink").textContent = S.think+"秒";
   $("#rngRate").value = S.rate;  $("#outRate").textContent = S.rate.toFixed(2)+"倍";
   $("#rngGap").value = S.gap;    $("#outGap").textContent = S.gap+"秒";
+  $("#rngPitch").value = S.pitch; $("#outPitch").textContent = Number(S.pitch).toFixed(2);
   $("#swShowQ").classList.toggle("on", S.showQ);
   $("#swReadNote").classList.toggle("on", S.readNote);
   $("#swFixRead").classList.toggle("on", S.fixRead);
@@ -1598,6 +1627,7 @@ function bindRange(id, out, key, fmt){
 bindRange("#rngThink","#outThink","think", v=>v+"秒");
 bindRange("#rngRate","#outRate","rate", v=>v.toFixed(2)+"倍");
 bindRange("#rngGap","#outGap","gap", v=>v+"秒");
+bindRange("#rngPitch","#outPitch","pitch", v=>v.toFixed(2));
 
 function bindSw(id, key, after){
   const el = $(id);
