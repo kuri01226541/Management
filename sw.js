@@ -1,6 +1,7 @@
 /* 経営学 音声一問一答 — オフライン用 Service Worker */
-const CACHE = "keiei-qa-v1";
-const ASSETS = ["./", "./index.html", "./manifest.json"];
+const CACHE = "keiei-qa-v2";
+const ASSETS = ["./", "./index.html", "./manifest.json",
+  "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(
