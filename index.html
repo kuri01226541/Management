@@ -7,10 +7,13 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="経営学一問一答">
-<meta name="theme-color" content="#faf8f4">
+<meta name="theme-color" content="#151a20">
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAAEWklEQVR42u3dMVLeMBDFcbOTW6RLRZGGi3EYLkaTgipdbkDBUKVIm+GzQdp9b/f/6sxEWv+0ko0xd+9vrwch/0tQAgIOAg4CDgIOAg4CDgIOAg4CDgIOQsBBwEHAQcBBwEHAQcBBwEHAQQg4CDgIOMiO/AUL8VZuFprhHwAAAABJRU5ErkJggg==">
-<link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAAEWklEQVR42u3dMVLeMBDFcbOTW6RLRZGGi3EYLkaTgipdbkDBUKVIm+GzQdp9b/f/6sxEWv+0ko0xd+9vrwch/0tQAgIOAg4CDgIOAg4CDgIOAg4CDgIOQsBBwEHAQcBBwEHAQcBBwEHAQQg4CDgIOMiO/AUL8VZuFprhHwAAAABJRU5ErkJggg==">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<link rel="shortcut icon" href="icon-192.png">
 <title>経営学 音声一問一答｜第9章〜第18章</title>
 <style>
 :root{
@@ -78,6 +81,12 @@ main{flex:1;display:flex;flex-direction:column;min-height:0;padding:0 16px}
 .meta .count{margin-left:auto;font-variant-numeric:tabular-nums;letter-spacing:.05em;white-space:nowrap;flex:none}
 .meta .topic{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
 #noLabel{color:var(--amber);font-weight:700;margin-right:2px}
+.imp{display:inline-block;border-radius:5px;padding:1px 5px;font-size:10.5px;font-weight:700;
+  letter-spacing:.02em;margin-right:5px;vertical-align:1px;line-height:1.5;flex:none}
+.imp.AA{background:var(--coral);color:#fff}
+.imp.A{background:var(--amberbg);color:var(--ontamber)}
+.imp.B{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+.imp.C{background:transparent;color:var(--muted);border:1px solid var(--line)}
 #noLabel.out{color:var(--coral)}
 #markLabel{color:var(--amber)}
 .jumprow{display:flex;gap:8px;align-items:center}
@@ -265,7 +274,9 @@ select{
         <button id="btnAllCh">すべて選ぶ</button>
         <button id="btnNoneCh">すべて解除</button>
       </div>
-      <p class="hint" id="scopeCount" style="margin:8px 0 0"></p>
+      <p class="hint" style="margin:12px 0 6px">重要度でしぼる</p>
+      <div class="chips" id="impChips"></div>
+      <p class="hint" id="scopeCount" style="margin:10px 0 0"></p>
       <div id="chapters"></div>
     </div>
 
@@ -340,6 +351,7 @@ select{
       <div class="toggle"><span>解説も読み上げる</span><div class="sw on" id="swReadNote"></div></div>
       <div class="toggle"><span>専門用語の読み方を補正する</span><div class="sw on" id="swFixRead"></div></div>
       <div class="toggle"><span>録音音声があれば優先して使う</span><div class="sw on" id="swUseAudio"></div></div>
+      <div class="toggle"><span>画面を閉じても再生を続ける</span><div class="sw on" id="swBg"></div></div>
       <div class="toggle"><span>順番をシャッフルする</span><div class="sw" id="swShuffle"></div></div>
       <div class="toggle"><span>「あとで復習」だけ出題する</span><div class="sw" id="swWeakOnly"></div></div>
       <div class="toggle"><span>画面を消さない</span><div class="sw on" id="swWake"></div></div>
@@ -793,64 +805,64 @@ const BANK = [
 ];
 /*BANK_END*/
 const TOPICS = {
-"9-1":["第1節","動機付け理論（欲求階層説）"],
-"9-2":["第2節","動機付け理論（伝統的管理法）"],
-"9-3":["第3節","動機付け理論（人間関係論）"],
-"9-4":["第4節","動機付け理論（自己実現モデル）"],
-"9-5":["第5節","過程理論"],
-"9-6":["第6節","組織論的管理論（バーナード理論）"],
-"9-7":["第7節","リーダーシップ理論"],
-"9-8":["第8節","リーダーシップ補論"],
-"9-9":["第9節","日本的経営"],
-"9-11":["第11節","意思決定論"],
-"9-12":["第12節","キャリア開発"],
-"10-2":["第2節","経営（企業）戦略の策定"],
-"10-3":["第3節","企業戦略各論〜多角化か選択と集中か〜"],
-"10-4":["第4節","企業戦略各論〜分化か統合か〜"],
-"10-5":["第5節","企業戦略各論〜企業経営の国際化〜"],
-"10-6":["第6節","競争戦略"],
-"10-7":["第7節","競争戦略補論"],
-"10-8":["第8節","マーケティング"],
-"10-9":["第9節","経営戦略の展開"],
-"11-1":["第1節","組織構造論（組織のデザイン）"],
-"11-2":["第2節","組織文化論"],
-"11-3":["第3節","知識創造論"],
-"11-4":["第4節","コンティンジェンシー理論"],
-"11-5":["第5節","組織間関係論"],
-"12-1":["第1節","技術経営とイノベーション"],
-"12-2":["第2節","イノベーションの課題の変化"],
-"12-3":["第3節","ベンチャービジネス"],
-"12-4":["第4節","イノベーション補論"],
-"13-2":["第2節","アメリカのコーポレートガバナンス"],
-"13-3":["第3節","日本のコーポレートガバナンス（従来）"],
-"13-4":["第4節","ガバナンスの強化（近年の日本）"],
-"13-5":["第5節","諸外国におけるガバナンスの実態"],
-"13-6":["第6節","企業の社会的責任"],
-"13-7":["第7節","企業観の変遷"],
-"15-1":["第1節","採用・人的資源管理"],
-"15-2":["第2節","組織社会化"],
-"15-3":["第3節","キャリア"],
-"15-4":["第4節","意思決定論"],
-"15-5":["第5節","組織文化（対立価値モデル）"],
-"16-1":["第1節","組織変革"],
-"16-2":["第2節","組織構造論・組織間関係論"],
-"16-3":["第3節","リーダーシップ理論"],
-"17-1":["第1節","産業集積論"],
-"18-1":["第1節-1","便益と顧客価値"],
-"18-2":["第1節-2","マーケティング・マネジメント・プロセス"],
-"18-3":["第1節-3","ＳＴＰ"],
-"18-4":["第1節-4","マーケティング・ミックス"],
-"18-5":["第1節-5","製品対応（Product）"],
-"18-6":["第1節-6","価格対応（Price）"],
-"18-7":["第1節-7","流通対応（Place）"],
-"18-8":["第1節-8","プロモーション対応（Promotion）"],
-"18-9":["第1節-9","マーケティング・ミックスと競争戦略"],
-"18-11":["第1節-11","コモディティ化への対応"],
-"18-21":["第2節-1","消費者の意思決定プロセスに関するモデル"],
-"18-22":["第2節-2","消費者の意思決定プロセス"],
-"18-23":["第2節-3","消費者の新製品採用"],
-"18-24":["第2節-4","消費者の多様性"],
-"18-25":["補論","マーケティングに関するその他の論点"]
+"9-1":["第1節","動機付け理論（欲求階層説）","A"],
+"9-2":["第2節","動機付け理論（伝統的管理法）","AA"],
+"9-3":["第3節","動機付け理論（人間関係論）","B"],
+"9-4":["第4節","動機付け理論（自己実現モデル）","AA"],
+"9-5":["第5節","過程理論","AA"],
+"9-6":["第6節","組織論的管理論（バーナード理論）","A"],
+"9-7":["第7節","リーダーシップ理論","AA"],
+"9-8":["第8節","リーダーシップ補論","AA"],
+"9-9":["第9節","日本的経営","B"],
+"9-11":["第11節","意思決定論","C"],
+"9-12":["第12節","キャリア開発","B"],
+"10-2":["第2節","経営（企業）戦略の策定","A"],
+"10-3":["第3節","企業戦略各論〜多角化か選択と集中か〜","B"],
+"10-4":["第4節","企業戦略各論〜分化か統合か〜","B"],
+"10-5":["第5節","企業戦略各論〜企業経営の国際化〜","B"],
+"10-6":["第6節","競争戦略","A"],
+"10-7":["第7節","競争戦略補論","B"],
+"10-8":["第8節","マーケティング","A"],
+"10-9":["第9節","経営戦略の展開","C"],
+"11-1":["第1節","組織構造論（組織のデザイン）","AA"],
+"11-2":["第2節","組織文化論","A"],
+"11-3":["第3節","知識創造論","A"],
+"11-4":["第4節","コンティンジェンシー理論","A"],
+"11-5":["第5節","組織間関係論","A"],
+"12-1":["第1節","技術経営とイノベーション","AA"],
+"12-2":["第2節","イノベーションの課題の変化","AA"],
+"12-3":["第3節","ベンチャービジネス","A"],
+"12-4":["第4節","イノベーション補論","B"],
+"13-2":["第2節","アメリカのコーポレートガバナンス","B"],
+"13-3":["第3節","日本のコーポレートガバナンス（従来）","B"],
+"13-4":["第4節","ガバナンスの強化（近年の日本）","A"],
+"13-5":["第5節","諸外国におけるガバナンスの実態","C"],
+"13-6":["第6節","企業の社会的責任","A"],
+"13-7":["第7節","企業観の変遷","C"],
+"15-1":["第1節","採用・人的資源管理","B"],
+"15-2":["第2節","組織社会化","A"],
+"15-3":["第3節","キャリア","A"],
+"15-4":["第4節","意思決定論","B"],
+"15-5":["第5節","組織文化（対立価値モデル）","C"],
+"16-1":["第1節","組織変革","A"],
+"16-2":["第2節","組織構造論・組織間関係論","A"],
+"16-3":["第3節","リーダーシップ理論","B"],
+"17-1":["第1節","産業集積論","B"],
+"18-1":["第1節-1","便益と顧客価値","A"],
+"18-2":["第1節-2","マーケティング・マネジメント・プロセス","A"],
+"18-3":["第1節-3","ＳＴＰ","AA"],
+"18-4":["第1節-4","マーケティング・ミックス","A"],
+"18-5":["第1節-5","製品対応（Product）","AA"],
+"18-6":["第1節-6","価格対応（Price）","AA"],
+"18-7":["第1節-7","流通対応（Place）","AA"],
+"18-8":["第1節-8","プロモーション対応（Promotion）","AA"],
+"18-9":["第1節-9","マーケティング・ミックスと競争戦略","A"],
+"18-11":["第1節-11","コモディティ化への対応","B"],
+"18-21":["第2節-1","消費者の意思決定プロセスに関するモデル","A"],
+"18-22":["第2節-2","消費者の意思決定プロセス","AA"],
+"18-23":["第2節-3","消費者の新製品採用","A"],
+"18-24":["第2節-4","消費者の多様性","B"],
+"18-25":["補論","マーケティングに関するその他の論点","B"]
 };
 
 
@@ -860,14 +872,17 @@ const CH = [...new Set(BANK.map(b=>b.c))].sort((a,b)=>a-b);
 const ALLT = Object.keys(TOPICS);
 const CHTOPICS = {};
 ALLT.forEach(t=>{ const c = +t.split("-")[0]; (CHTOPICS[c] = CHTOPICS[c] || []).push(t); });
+const IMPS = ["AA","A","B","C"];
+const IMPNAME = {AA:"最重要", A:"重要", B:"標準", C:"余裕があれば"};
 const TCOUNT = {};
 BANK.forEach(b=>{ TCOUNT[b.t] = (TCOUNT[b.t]||0) + 1; });
 const CHNAME = {9:"経営管理論",10:"経営戦略論",11:"経営組織論",12:"技術経営",13:"経営統制",15:"竹内委員",16:"河合委員",17:"若林委員",18:"勝又委員"};
 
 const S = {
   topics: new Set(ALLT),
+  imps: ["AA","A","B","C"],
   think: 8, rate: 1.05, gap: 2, pitch: 1, pitchDiff: -0.15, voiceURI: "", voiceURI2: "", theme: "light",
-  showQ: true, readNote: true, shuffle: false, weakOnly: false, wake: true, fixRead: true, useAudio: true
+  showQ: true, readNote: true, shuffle: false, weakOnly: false, wake: true, fixRead: true, useAudio: true, bg: true
 };
 let queue = [], idx = 0, running = false, token = 0, weak = {}, seen = {};
 let wakeLock = null, voiceQ = null, voiceA = null, swState = "未対応";
@@ -981,6 +996,7 @@ async function loadState(){
     try{
       const o = JSON.parse(st);
       Object.assign(S, o);
+      if(!Array.isArray(o.imps) || !o.imps.length) S.imps = IMPS.slice();
       if(o.topics) S.topics = new Set(o.topics);
       else if(o.chapters) S.topics = new Set(ALLT.filter(t=>o.chapters.indexOf(+t.split("-")[0])>=0));
       else S.topics = new Set(ALLT);
@@ -1031,7 +1047,9 @@ function refreshDiag(){
     ["データベース", Store.okIDB ? "使える" : "使えない"],
     ["クッキー", Store.okCK ? "使える" : "使えない"],
     ["オフライン対応", swState],
-    ["録音音声", audioReady ? (Object.keys(audioMap).length + "問ぶん あり") : "なし（端末の合成音声を使用）"]
+    ["録音音声", audioReady ? (Object.keys(audioMap).length + "問ぶん あり") : "なし（端末の合成音声を使用）"],
+    ["背面での継続", audioMode() ? "有効" : "無効（録音音声が必要）"],
+    ["ロック画面操作", ("mediaSession" in navigator) ? "対応" : "非対応"]
   ];
   el.innerHTML = rows.map(r=>r[0]+"：<b>"+r[1]+"</b>").join("<br>");
 }
@@ -1491,6 +1509,8 @@ if("speechSynthesis" in window){
 /* ============ 録音音声（VOICEVOX等で作った mp3）の再生 ============ */
 const player = new Audio();
 player.preload = "auto";
+player.playsInline = true;
+try{ player.setAttribute("playsinline",""); }catch(e){}
 let audioMap = null, audioReady = false, audioUnlocked = false;
 const SILENT = "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjYwLjE2LjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAACAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD/////////////////////////////////////////AAAAAExhdmM2MAAAAAAAAAAAAAAAACQEAAAAAAAAASDbBVU4AAAAAAAAAAAAAAAAAAAA//sQxAADwAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV";
 
@@ -1551,6 +1571,82 @@ async function say(text, my, role, i, part){
 }
 function stopAudio(){ try{ player.pause(); }catch(e){} }
 
+/* ---- バックグラウンド継続 ----
+   iOSは画面を離れるとタイマーが止まるため、「考える時間」も無音の音声として
+   再生する。こうすると再生終了イベントで次へ進むため、裏でも鳴り続ける。 */
+const silenceCache = {};
+function silenceURL(sec){
+  const key = String(Math.round(sec * 10));
+  if(silenceCache[key]) return silenceCache[key];
+  const rate = 8000, n = Math.max(1, Math.round(rate * sec));
+  const bytes = 44 + n * 2;
+  const buf = new ArrayBuffer(bytes), v = new DataView(buf);
+  const put = (o, str)=>{ for(let i=0;i<str.length;i++) v.setUint8(o+i, str.charCodeAt(i)); };
+  put(0, "RIFF"); v.setUint32(4, bytes - 8, true); put(8, "WAVEfmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  put(36, "data"); v.setUint32(40, n * 2, true);
+  const url = URL.createObjectURL(new Blob([buf], {type:"audio/wav"}));
+  silenceCache[key] = url;
+  return url;
+}
+/* 録音音声が使える状態か（バックグラウンド継続の条件） */
+function audioMode(){
+  return S.bg !== false && S.useAudio && audioReady && !!audioMap;
+}
+function playSilence(sec, my){
+  return new Promise(res=>{
+    let done = false;
+    const fin = ()=>{ if(done) return; done = true; cleanup(); res(); };
+    const onEnd = ()=>fin(), onErr = ()=>fin();
+    function cleanup(){
+      player.removeEventListener("ended", onEnd);
+      player.removeEventListener("error", onErr);
+      clearInterval(iv); clearInterval(vis);
+    }
+    const iv = setInterval(()=>{ if(my!==token){ try{ player.pause(); }catch(e){} fin(); } }, 150);
+    // 画面が見えているときだけ円を動かす
+    const total = sec * 1000; let left = total;
+    const vis = setInterval(()=>{
+      left -= 100;
+      ringSet(left / total, Math.max(0, Math.ceil(left / 1000)));
+      if(left <= 0) clearInterval(vis);
+    }, 100);
+    player.addEventListener("ended", onEnd);
+    player.addEventListener("error", onErr);
+    try{
+      player.src = silenceURL(sec);
+      player.playbackRate = 1;
+      const pr = player.play();
+      if(pr && pr.catch) pr.catch(()=>fin());
+    }catch(e){ fin(); }
+  });
+}
+
+/* ---- ロック画面・イヤホンの操作に対応 ---- */
+function updateMediaSession(b){
+  if(!("mediaSession" in navigator)) return;
+  try{
+    const tp = (b && TOPICS[b.t]) || ["","",""];
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: b ? ("No." + (b._i + 1) + "　" + b.q.slice(0, 40)) : "経営学 音声一問一答",
+      artist: b ? ("第" + b.c + "章 " + (CHNAME[b.c] || "")) : "",
+      album: tp[0] + " " + tp[1],
+      artwork: [{src:"icon-512.png", sizes:"512x512", type:"image/png"}]
+    });
+  }catch(e){}
+}
+if("mediaSession" in navigator){
+  const set = (k, fn)=>{ try{ navigator.mediaSession.setActionHandler(k, fn); }catch(e){} };
+  set("play", ()=>{ if(!running){ if(!queue.length) build(); run(); } });
+  set("pause", ()=>{ if(running) pause(); });
+  set("nexttrack", ()=>jump(1));
+  set("previoustrack", ()=>jump(-1));
+  set("seekforward", ()=>jump(1));
+  set("seekbackward", ()=>jump(-1));
+}
+
 function pitchFor(role){
   const p = Number(S.pitch) + (role === "a" ? Number(S.pitchDiff) : 0);
   return Math.max(0.4, Math.min(2, p));
@@ -1574,7 +1670,9 @@ function speak(text, my, role){
 }
 function stopSpeech(){ try{ speechSynthesis.cancel(); }catch(e){} stopAudio(); $("#dial").classList.remove("speaking"); }
 
-function wait(ms, my){
+async function wait(ms, my){
+  if(ms <= 0) return;
+  if(audioMode()) return playSilence(ms / 1000, my);
   return new Promise(res=>{
     const step = 100; let left = ms;
     const iv = setInterval(()=>{
@@ -1594,7 +1692,8 @@ function ringSet(ratio, num){
 /* ============ queue ============ */
 BANK.forEach((b,i)=>{ b._i = i; });
 function build(){
-  let pool = BANK.filter(b=>S.topics.has(b.t));
+  const imps = new Set(S.imps && S.imps.length ? S.imps : IMPS);
+  let pool = BANK.filter(b=>S.topics.has(b.t) && imps.has(TOPICS[b.t][2]));
   if(S.weakOnly) pool = pool.filter(b=>weak[keyOf(b)]);
   if(S.shuffle){
     pool = pool.slice();
@@ -1620,7 +1719,8 @@ function paint(){
   }
   const tp = TOPICS[b.t] || ["",""];
   $("#chLabel").textContent = "第"+b.c+"章 "+(CHNAME[b.c]||"");
-  $("#topicLabel").textContent = tp[0] + " " + tp[1];
+  $("#topicLabel").innerHTML = '<span class="imp ' + tp[2] + '">' + tp[2] +
+    "</span>" + tp[0] + " " + tp[1].replace(/[<>&]/g, "");
   $("#noLabel").textContent = "No." + (b._i + 1);
   $("#noLabel").classList.toggle("out", !S.topics.has(b.t));
   $("#markLabel").textContent = weak[keyOf(b)] ? "★" : "";
@@ -1633,6 +1733,10 @@ function paint(){
 }
 function scopeLabel(){
   if(S.weakOnly) return "復習リスト";
+  const impNote = (S.imps.length && S.imps.length < IMPS.length) ? " ・" + S.imps.join("/") : "";
+  return scopeBase() + impNote;
+}
+function scopeBase(){
   if(S.topics.size === ALLT.length) return "全範囲 " + BANK.length + "問";
   const chs = [...new Set([...S.topics].map(t=>+t.split("-")[0]))].sort((a,b)=>a-b);
   if(S.topics.size === 1){
@@ -1650,10 +1754,12 @@ async function run(){
   const my = ++token;
   running = true;
   $("#btnPlay").textContent = "❚❚ 一時停止";
+  if("mediaSession" in navigator){ try{ navigator.mediaSession.playbackState = "playing"; }catch(e){} }
   await requestWake();
   while(running && my===token && queue.length){
     const b = queue[idx];
     paint();
+    updateMediaSession(b);
     $("#judge").dataset.on = "0";
 
     phase("出題中", "問題を読み上げています");
@@ -1688,6 +1794,7 @@ async function run(){
 }
 function pause(){
   running = false; token++;
+  if("mediaSession" in navigator){ try{ navigator.mediaSession.playbackState = "paused"; }catch(e){} }
   stopSpeech(); releaseWake();
   $("#btnPlay").textContent = "▶ 再開";
   phase("一時停止中", "再開すると今の問題から読み直します");
@@ -1748,7 +1855,8 @@ CH.forEach(c=>{
   CHTOPICS[c].forEach(t=>{
     const o = document.createElement("button");
     o.dataset.t = t;
-    o.textContent = TOPICS[t][0] + " " + TOPICS[t][1] + "（" + (TCOUNT[t]||0) + "）";
+    o.innerHTML = '<span class="imp ' + TOPICS[t][2] + '">' + TOPICS[t][2] + "</span>" +
+      TOPICS[t][0] + " " + TOPICS[t][1] + "（" + (TCOUNT[t]||0) + "）";
     o.onclick = ()=>{
       if(S.topics.has(t)) S.topics.delete(t); else S.topics.add(t);
       ensureNotEmpty(t);
@@ -1764,14 +1872,33 @@ function ensureNotEmpty(fallback){
   else if(CHTOPICS[fallback]) CHTOPICS[fallback].forEach(t=>S.topics.add(t));
   else S.topics = new Set(ALLT);
 }
+// 重要度チップ
+const impBox = $("#impChips");
+IMPS.forEach(k=>{
+  const n = BANK.filter(b=>TOPICS[b.t][2]===k).length;
+  const o = document.createElement("button");
+  o.dataset.imp = k;
+  o.innerHTML = '<span class="imp ' + k + '">' + k + "</span>" + IMPNAME[k] + "（" + n + "）";
+  o.onclick = ()=>{
+    const set = new Set(S.imps);
+    if(set.has(k)) set.delete(k); else set.add(k);
+    if(!set.size) set.add(k);
+    S.imps = IMPS.filter(x=>set.has(x));
+    syncChips(); saveState(); afterSettings();
+  };
+  impBox.appendChild(o);
+});
 function syncChips(){
+  impBox.querySelectorAll("button[data-imp]").forEach(b=>
+    b.classList.toggle("on", S.imps.indexOf(b.dataset.imp) >= 0));
   chapBox.querySelectorAll("button[data-t]").forEach(b=>
     b.classList.toggle("on", S.topics.has(b.dataset.t)));
-  const n = BANK.filter(b=>S.topics.has(b.t)).length;
+  const imps = new Set(S.imps);
+  const n = BANK.filter(b=>S.topics.has(b.t) && imps.has(TOPICS[b.t][2])).length;
   const el = $("#scopeCount");
   if(el) el.textContent = "選択中：" + S.topics.size + "論点 / " + n + "問";
 }
-$("#btnAllCh").onclick = ()=>{ S.topics = new Set(ALLT); syncChips(); saveState(); afterSettings(); };
+$("#btnAllCh").onclick = ()=>{ S.topics = new Set(ALLT); S.imps = IMPS.slice(); syncChips(); saveState(); afterSettings(); };
 $("#btnNoneCh").onclick = ()=>{ S.topics = new Set([ALLT[0]]); syncChips(); saveState(); afterSettings(); };
 
 function applyTheme(){
@@ -1863,6 +1990,7 @@ function refreshSettingsUI(){
   $("#swReadNote").classList.toggle("on", S.readNote);
   $("#swFixRead").classList.toggle("on", S.fixRead);
   $("#swUseAudio").classList.toggle("on", S.useAudio);
+  $("#swBg").classList.toggle("on", S.bg !== false);
   $("#swShuffle").classList.toggle("on", S.shuffle);
   $("#swWeakOnly").classList.toggle("on", S.weakOnly);
   $("#swWake").classList.toggle("on", S.wake);
@@ -1886,6 +2014,7 @@ bindSw("#swShowQ","showQ", paint);
 bindSw("#swReadNote","readNote");
 bindSw("#swFixRead","fixRead");
 bindSw("#swUseAudio","useAudio");
+bindSw("#swBg","bg");
 bindSw("#swShuffle","shuffle", afterSettings);
 bindSw("#swWeakOnly","weakOnly", afterSettings);
 bindSw("#swWake","wake", ()=>{ if(!S.wake) releaseWake(); else if(running) requestWake(); });
@@ -1939,7 +2068,8 @@ function renderJumpPreview(){
   }
   const b = BANK[v-1], tp = TOPICS[b.t] || ["",""];
   const out = !S.topics.has(b.t) ? "　※ 現在の出題範囲の外です" : "";
-  el.innerHTML = "<b>第" + b.c + "章 " + (CHNAME[b.c]||"") + "　" + tp[0] + " " + tp[1] + out + "</b>" + b.q;
+  el.innerHTML = '<b><span class="imp ' + tp[2] + '">' + tp[2] + "</span>第" + b.c + "章 " +
+    (CHNAME[b.c]||"") + "　" + tp[0] + " " + tp[1] + out + "</b>" + b.q;
 }
 $("#btnJump").onclick = ()=>{
   const b = queue[idx];
@@ -1987,7 +2117,7 @@ function renderStats(){
       const dd = list.filter(b=>seen[keyOf(b)]).length;
       const ww = list.filter(b=>weak[keyOf(b)]).length;
       const range = "No." + (list[0]._i+1) + "〜" + (list[list.length-1]._i+1);
-      html += "　" + TOPICS[t][0] + " " + TOPICS[t][1] +
+      html += '　<span class="imp ' + TOPICS[t][2] + '">' + TOPICS[t][2] + "</span>" + TOPICS[t][0] + " " + TOPICS[t][1] +
               "　<b>" + dd + "</b>/" + list.length +
               (ww ? "　★" + ww : "") + "　<span style=\"opacity:.6\">" + range + "</span><br>";
     });
